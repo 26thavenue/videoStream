@@ -77,7 +77,7 @@ async function processJob(sourceKey: string, videoId: string): Promise<void> {
     if (thumbnailsEnabled) {
       const durationSec = await probeDuration(tmpInput);
       await runFfmpegThumbnails(tmpInput, tmpThumbDir, durationSec);
-      await uploadDirRecursive(tmpThumbDir, path.join(videoId, "thumbnails"));
+      await uploadDirRecursive(tmpThumbDir, `${videoId}/thumbnails`);
     }
   } finally {
     fs.rmSync(tmpInput, { force: true });

@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VideoStream — gains, costs & metrics</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0d12;
+        --panel: #141822;
+        --panel-2: #1a1f2b;
+        --line: #252c3a;
+        --text: #e8ebf2;
+        --muted: #8b95a7;
+        --mux: #ff6b81;
+        --mux-soft: #7a3340;
+        --self: #4c8dff;
+        --self-soft: #27406e;
+        --good: #57d38c;
+        --warn: #ffc857;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background:
+          radial-gradient(1200px 600px at 15% -10%, #16203a 0%, transparent 55%),
+          radial-gradient(1000px 500px at 100% 0%, #1a1630 0%, transparent 50%),
+          var(--bg);
+        color: var(--text);
+        font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        padding: 40px 28px 64px;
+      }
+      .wrap {
+        width: min(1180px, 100%);
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 26px;
+      }
+      header .eyebrow {
+        color: var(--self);
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        font-size: 12px;
+      }
+      header h1 {
+        margin: 8px 0 6px;
+        font-size: 32px;
+        line-height: 1.15;
+        letter-spacing: -0.02em;
+      }
+      header p {
+        margin: 0;
+        color: var(--muted);
+        max-width: 760px;
+      }
+
+      .grid {
+        display: grid;
+        gap: 18px;
+      }
+      .stats {
+        grid-template-columns: repeat(4, 1fr);
+      }
+      .stat {
+        background: linear-gradient(180deg, var(--panel-2), var(--panel));
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 18px;
+      }
+      .stat .k {
+        color: var(--muted);
+        font-size: 12.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .stat .v {
+        font-size: 30px;
+        font-weight: 750;
+        letter-spacing: -0.02em;
+        margin-top: 8px;
+      }
+      .stat .v small {
+        font-size: 15px;
+        font-weight: 500;
+        color: var(--muted);
+        letter-spacing: 0;
+      }
+      .stat .d {
+        margin-top: 6px;
+        font-size: 12.5px;
+        color: var(--muted);
+      }
+      .stat .d b {
+        color: var(--good);
+        font-weight: 650;
+      }
+
+      .card {
+        background: linear-gradient(180deg, #151a25, var(--panel));
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 22px 22px 18px;
+      }
+      .card h2 {
+        margin: 0 0 4px;
+        font-size: 17px;
+        letter-spacing: -0.01em;
+      }
+      .card .sub {
+        margin: 0 0 18px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .cols {
+        display: grid;
+        gap: 18px;
+      }
+      .cols.two {
+        grid-template-columns: 1fr 1fr;
+      }
+      .cols.three {
+        grid-template-columns: repeat(3, 1fr);
+      }
+
+      .legend {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: 14px;
+        font-size: 12.5px;
+        color: var(--muted);
+      }
+      .legend i {
+        display: inline-block;
+        width: 11px;
+        height: 11px;
+        border-radius: 3px;
+        margin-right: 6px;
+        vertical-align: -1px;
+      }
+      .legend .m {
+        background: var(--mux);
+      }
+      .legend .s {
+        background: var(--self);
+      }
+
+      .chart {
+        display: flex;
+        align-items: flex-end;
+        gap: 26px;
+        height: 300px;
+        padding: 26px 6px 0;
+      }
+      .group {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        height: 100%;
+      }
+      .group .bars {
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        gap: 10px;
+        width: 100%;
+        flex: 1;
+      }
+      .group .glabel {
+        font-size: 12.5px;
+        color: var(--muted);
+        text-align: center;
+      }
+      .bar {
+        width: 46px;
+        max-width: 42%;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        height: 100%;
+      }
+      .fill {
+        width: 100%;
+        border-radius: 8px 8px 4px 4px;
+        position: relative;
+        min-height: 3px;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+      }
+      .fill.m {
+        background: linear-gradient(180deg, #ff8a9c, var(--mux));
+      }
+      .fill.s {
+        background: linear-gradient(180deg, #79aaff, var(--self));
+      }
+      .fill .val {
+        position: absolute;
+        top: -22px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 12.5px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      .fill.s .val {
+        color: #bcd4ff;
+      }
+      .fill.m .val {
+        color: #ffc2cc;
+      }
+      .chart.small {
+        height: 240px;
+      }
+
+      .axis {
+        display: flex;
+        justify-content: space-between;
+        color: #5f6a7d;
+        font-size: 11px;
+        border-top: 1px dashed #232a38;
+        margin-top: -1px;
+        padding-top: 6px;
+      }
+
+      table.cmp {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13.5px;
+      }
+      table.cmp th,
+      table.cmp td {
+        text-align: left;
+        padding: 11px 12px;
+        border-bottom: 1px solid #1f2531;
+      }
+      table.cmp thead th {
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-bottom: 1px solid var(--line);
+      }
+      table.cmp tbody tr:hover {
+        background: #171c27;
+      }
+      table.cmp td.num {
+        font-variant-numeric: tabular-nums;
+        font-weight: 650;
+        text-align: right;
+      }
+      .tag {
+        display: inline-block;
+        padding: 2px 9px;
+        border-radius: 999px;
+        font-size: 11.5px;
+        font-weight: 650;
+        border: 1px solid transparent;
+      }
+      .tag.yes {
+        background: rgba(87, 211, 140, 0.12);
+        border-color: rgba(87, 211, 140, 0.35);
+        color: var(--good);
+      }
+      .tag.no {
+        background: rgba(255, 107, 129, 0.1);
+        border-color: rgba(255, 107, 129, 0.3);
+        color: #ff9aa8;
+      }
+      .tag.partial {
+        background: rgba(255, 200, 87, 0.1);
+        border-color: rgba(255, 200, 87, 0.3);
+        color: var(--warn);
+      }
+
+      .callout {
+        display: flex;
+        gap: 14px;
+        align-items: flex-start;
+        background: linear-gradient(180deg, #172033, #141a28);
+        border: 1px solid #27406e;
+        border-radius: 16px;
+        padding: 18px 20px;
+      }
+      .callout .big {
+        font-size: 26px;
+        font-weight: 750;
+        color: var(--self);
+        white-space: nowrap;
+        letter-spacing: -0.02em;
+      }
+      .callout .txt {
+        color: #c3ccdc;
+        font-size: 13.5px;
+      }
+      .callout .txt b {
+        color: var(--text);
+      }
+
+      .metricstrip {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+      }
+      .mcard {
+        background: #10141d;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 16px 18px;
+      }
+      .mcard .lbl {
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .mcard .num {
+        font-size: 26px;
+        font-weight: 750;
+        font-variant-numeric: tabular-nums;
+        margin-top: 6px;
+      }
+      .mcard .sub {
+        color: var(--muted);
+        font-size: 12.5px;
+        margin-top: 4px;
+      }
+
+      footer {
+        color: #6b7484;
+        font-size: 12px;
+        text-align: center;
+        line-height: 1.7;
+      }
+      footer code {
+        color: #9fb0c9;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <div class="eyebrow">videoStream · self-hosted HLS pipeline</div>
+        <h1>Build vs buy: what you actually save</h1>
+        <p>
+          A Postgres job queue + ffmpeg worker + object storage (LocalStack / Cloudflare R2) turns one
+          upload into an adaptive HLS ladder. Below: the cash gains, the honest cost breakdown, and the
+          pipeline's live metrics versus a per-minute managed platform (Mux).
+        </p>
+      </header>
+
+      <section class="grid stats">
+        <div class="stat">
+          <div class="k">Monthly cost, at scale</div>
+          <div class="v">$440 <small>vs $2,350</small></div>
+          <div class="d"><b>~5.3× cheaper</b> at 2M delivered min/mo</div>
+        </div>
+        <div class="stat">
+          <div class="k">Delivery / 1,000 min</div>
+          <div class="v">$0.005 <small>vs $1.00</small></div>
+          <div class="d"><b>~200× cheaper</b> — egress is $0</div>
+        </div>
+        <div class="stat">
+          <div class="k">Marginal cost / extra view</div>
+          <div class="v">~$0</div>
+          <div class="d">vs metered per-minute billing</div>
+        </div>
+        <div class="stat">
+          <div class="k">Pipeline built in</div>
+          <div class="v">1–2 <small>weeks</small></div>
+          <div class="d">then it's a fixed cost, not per-view</div>
+        </div>
+      </section>
+
+      <div class="callout">
+        <div class="big">~200K min/mo</div>
+        <div class="txt">
+          <b>The crossover.</b> Under ~100–150K delivered minutes/month, a managed platform's free tier
+          wins outright. Past a few hundred thousand to a couple million minutes, self-hosting is
+          <b>5× cheaper on cash</b> — the real cost becomes engineering and ops, not dollars.
+        </div>
+      </div>
+
+      <section class="card">
+        <h2>Monthly total cost — the headline</h2>
+        <p class="sub">All 1080p, ~30 min avg video. Self-hosted = R2 storage + a VPS + Postgres on the box.</p>
+        <div class="legend">
+          <span><i class="m"></i>Mux (managed)</span>
+          <span><i class="s"></i>Self-hosted (R2 + VPS)</span>
+        </div>
+        <div class="chart">
+          <div class="group">
+            <div class="bars">
+              <div class="bar"><div class="fill m" style="height: 100%"><span class="val">$2,350</span></div></div>
+              <div class="bar"><div class="fill s" style="height: 18.7%"><span class="val">$440</span></div></div>
+            </div>
+            <div class="glabel">Scale<br />2M min/mo</div>
+          </div>
+          <div class="group">
+            <div class="bars">
+              <div class="bar"><div class="fill m" style="height: 100%"><span class="val">$145</span></div></div>
+              <div class="bar"><div class="fill s" style="height: 50.3%"><span class="val">$73</span></div></div>
+            </div>
+            <div class="glabel">Startup<br />200K min/mo</div>
+          </div>
+          <div class="group">
+            <div class="bars">
+              <div class="bar"><div class="fill m" style="height: 31%"><span class="val">$4.50</span></div></div>
+              <div class="bar"><div class="fill s" style="height: 100%"><span class="val">$27</span></div></div>
+            </div>
+            <div class="glabel">Hobby<br />10K min/mo</div>
+          </div>
+        </div>
+        <div class="axis"><span>Bars scaled per tier</span><span>Mux wins small · self-host wins at scale</span></div>
+      </section>
+
+      <div class="cols two">
+        <section class="card">
+          <h2>Delivery economics</h2>
+          <p class="sub">Cost per 1,000 minutes watched (1080p), after free tiers.</p>
+          <div class="legend">
+            <span><i class="m"></i>Mux</span>
+            <span><i class="s"></i>Self-hosted</span>
+          </div>
+          <div class="chart small">
+            <div class="group">
+              <div class="bars">
+                <div class="bar"><div class="fill m" style="height: 100%"><span class="val">$1.00</span></div></div>
+                <div class="bar"><div class="fill s" style="height: 1.5%"><span class="val">$0.005</span></div></div>
+              </div>
+              <div class="glabel">per 1,000 min watched</div>
+            </div>
+          </div>
+          <div class="axis"><span>R2 Class-B reads: ~10,000 GETs</span><span>egress $0</span></div>
+        </section>
+
+        <section class="card">
+          <h2>Storage — first month, per video</h2>
+          <p class="sub">Same order of magnitude both sides — storage is not where the bill bites.</p>
+          <div class="legend">
+            <span><i class="m"></i>Mux</span>
+            <span><i class="s"></i>R2</span>
+          </div>
+          <div class="chart small">
+            <div class="group">
+              <div class="bars">
+                <div class="bar"><div class="fill m" style="height: 5.6%"><span class="val">$0.015</span></div></div>
+                <div class="bar"><div class="fill s" style="height: 3%"><span class="val">$0.008</span></div></div>
+              </div>
+              <div class="glabel">5 min</div>
+            </div>
+            <div class="group">
+              <div class="bars">
+                <div class="bar"><div class="fill m" style="height: 33.3%"><span class="val">$0.09</span></div></div>
+                <div class="bar"><div class="fill s" style="height: 18.5%"><span class="val">$0.05</span></div></div>
+              </div>
+              <div class="glabel">30 min</div>
+            </div>
+            <div class="group">
+              <div class="bars">
+                <div class="bar"><div class="fill m" style="height: 100%"><span class="val">$0.27</span></div></div>
+                <div class="bar"><div class="fill s" style="height: 54.4%"><span class="val">$0.15</span></div></div>
+              </div>
+              <div class="glabel">90 min</div>
+            </div>
+          </div>
+          <div class="axis"><span>Includes source + HLS output</span><span>10 GB free tier</span></div>
+        </section>
+      </div>
+
+      <section class="card">
+        <h2>Pipeline metrics — proof it's streaming, not a file download</h2>
+        <p class="sub">A single playback session: raw object vs adaptive HLS, observed through the proxy.</p>
+        <div class="metricstrip">
+          <div class="mcard">
+            <div class="lbl">Requests per play</div>
+            <div class="num">1 <span style="color:var(--muted);font-size:16px">vs</span> 9</div>
+            <div class="sub">raw file vs HLS (manifest + segments)</div>
+          </div>
+          <div class="mcard">
+            <div class="lbl">Renditions switched live</div>
+            <div class="num">3</div>
+            <div class="sub">1080p / 720p / 480p, per segment</div>
+          </div>
+          <div class="mcard">
+            <div class="lbl">Jobs completed</div>
+            <div class="num" style="color: var(--good)">1 / 1</div>
+            <div class="sub">queue with retries + dead-letter</div>
+          </div>
+        </div>
+        <div class="legend" style="margin-top:20px">
+          <span><i class="m"></i>Raw mp4 (/source/*)</span>
+          <span><i class="s"></i>HLS (/videos/*) — 12s clip, ~6s segments</span>
+        </div>
+        <div class="chart">
+          <div class="group">
+            <div class="bars">
+              <div class="bar"><div class="fill m" style="height: 11%"><span class="val">1</span></div></div>
+              <div class="bar"><div class="fill s" style="height: 100%"><span class="val">9</span></div></div>
+            </div>
+            <div class="glabel">object requests per playback</div>
+          </div>
+          <div class="group">
+            <div class="bars">
+              <div class="bar"><div class="fill m" style="height: 8%"><span class="val">no</span></div></div>
+              <div class="bar"><div class="fill s" style="height: 100%"><span class="val">yes</span></div></div>
+            </div>
+            <div class="glabel">adapts to slow network</div>
+          </div>
+        </div>
+        <div class="axis">
+          <span>segment_requests_total ↑ per segment · segment_bytes_total tracks bytes</span>
+          <span>source_requests_total = raw only</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Full cost table</h2>
+        <p class="sub">Working model, all 1080p, ~30 min average video, Mux input free (basic quality).</p>
+        <table class="cmp">
+          <thead>
+            <tr>
+              <th>Tier</th>
+              <th class="num">New videos/mo</th>
+              <th class="num">Minutes delivered</th>
+              <th class="num">Mux total</th>
+              <th class="num">Self-hosted</th>
+              <th class="num">Savings</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Hobby</td>
+              <td class="num">10</td>
+              <td class="num">10,000</td>
+              <td class="num" style="color:#ff9aa8">$4.50</td>
+              <td class="num" style="color:#bcd4ff">$27</td>
+              <td class="num" style="color:var(--warn)">buy wins</td>
+            </tr>
+            <tr>
+              <td>Startup</td>
+              <td class="num">100</td>
+              <td class="num">200,000</td>
+              <td class="num" style="color:#ff9aa8">$145</td>
+              <td class="num" style="color:#bcd4ff">$73</td>
+              <td class="num">~2×</td>
+            </tr>
+            <tr>
+              <td>Scale</td>
+              <td class="num">1,000</td>
+              <td class="num">2,000,000</td>
+              <td class="num" style="color:#ff9aa8">$2,350</td>
+              <td class="num" style="color:#bcd4ff">$440</td>
+              <td class="num" style="color:var(--good)">~5.3×</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="sub" style="margin:14px 0 0">
+          Self-hosted includes R2 storage, compute (2–4 vCPU box), Postgres on the same box. The uncounted
+          line item is engineering time — 1–2 weeks to build, ongoing ops after.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Feature surface — where "build" still loses</h2>
+        <p class="sub">Honest gaps vs a managed platform. These are the projects you'd still own.</p>
+        <table class="cmp">
+          <thead>
+            <tr><th>Capability</th><th>Mux</th><th>This repo</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Adaptive HLS ingest → playback</td><td><span class="tag yes">Yes</span></td><td><span class="tag yes">Yes</span></td></tr>
+            <tr><td>Thumbnails / poster</td><td><span class="tag yes">Yes</span></td><td><span class="tag yes">Yes</span></td></tr>
+            <tr><td>Signed URLs / private buckets</td><td><span class="tag yes">Yes</span></td><td><span class="tag yes">Yes</span></td></tr>
+            <tr><td>QoE analytics (rebuffering, startup)</td><td><span class="tag yes">Yes</span></td><td><span class="tag partial">Partial</span></td></tr>
+            <tr><td>Custom ladder / codecs</td><td><span class="tag partial">Managed</span></td><td><span class="tag yes">Full control</span></td></tr>
+            <tr><td>Live streaming</td><td><span class="tag yes">Yes</span></td><td><span class="tag no">No</span></td></tr>
+            <tr><td>MP4 / static renditions</td><td><span class="tag yes">Yes</span></td><td><span class="tag no">No</span></td></tr>
+            <tr><td>Captions / multi-track audio</td><td><span class="tag yes">Yes</span></td><td><span class="tag no">No</span></td></tr>
+            <tr><td>DRM</td><td><span class="tag yes">Add-on</span></td><td><span class="tag no">No</span></td></tr>
+            <tr><td>4K / H.265 / AV1</td><td><span class="tag yes">Up to 4K</span></td><td><span class="tag no">1080p H.264</span></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer>
+        Figures from <code>LIMITS-and-COSTS.md</code> (Mux / Cloudflare R2 pricing, Sept 2026) ·
+        metrics from the running pipeline via <code>GET /metrics</code> ·
+        repo: <code>videoStream</code>
+      </footer>
+    </div>
+  </body>
+</html>

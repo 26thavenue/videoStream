@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VideoStream player — HLS demo</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 18px;
+        padding: 24px;
+        font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: #0f1115;
+        color: #e6e8ee;
+      }
+      h1 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: 0.2px;
+      }
+      .card {
+        width: min(960px, 100%);
+        background: #171a21;
+        border: 1px solid #262b36;
+        border-radius: 14px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      input {
+        flex: 1 1 240px;
+        min-width: 0;
+        padding: 10px 12px;
+        border-radius: 9px;
+        border: 1px solid #2e3442;
+        background: #0f1115;
+        color: inherit;
+        font: inherit;
+      }
+      input:focus {
+        outline: 2px solid #4c7dff;
+        outline-offset: 1px;
+      }
+      button {
+        padding: 10px 16px;
+        border-radius: 9px;
+        border: 1px solid #3a5bd9;
+        background: #3f6bff;
+        color: #fff;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #3560f0;
+      }
+      button.ghost {
+        background: transparent;
+        border-color: #2e3442;
+        color: #b9c2d0;
+        font-weight: 500;
+        padding: 6px 12px;
+      }
+      video {
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        background: #000;
+        border-radius: 10px;
+        display: block;
+      }
+      .bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        font-size: 13px;
+        color: #9aa3b2;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: #1d2740;
+        border: 1px solid #2f3f6b;
+        color: #cfe0ff;
+        font-weight: 600;
+        font-size: 13px;
+      }
+      .chip .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #57d38c;
+      }
+      .spacer {
+        flex: 1;
+      }
+      .status {
+        font-size: 13px;
+        color: #9aa3b2;
+        min-height: 1.4em;
+      }
+      .status.error {
+        color: #ff6b6b;
+      }
+      .status.ok {
+        color: #57d38c;
+      }
+      .log {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        max-height: 260px;
+        overflow: auto;
+        border: 1px solid #262b36;
+        border-radius: 10px;
+        background: #0f1115;
+      }
+      .log .head,
+      .log .item {
+        display: grid;
+        grid-template-columns: 92px 1fr 130px 78px 62px;
+        gap: 8px;
+        padding: 6px 10px;
+        align-items: center;
+      }
+      .log .head {
+        position: sticky;
+        top: 0;
+        background: #131722;
+        color: #7f8a9c;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-size: 10px;
+        border-bottom: 1px solid #262b36;
+      }
+      .log .item {
+        border-bottom: 1px solid #1b1f29;
+      }
+      .log .item .kind {
+        font-weight: 700;
+      }
+      .log .item .kind.segment {
+        color: #6ea8ff;
+      }
+      .log .item .kind.playlist {
+        color: #c79bff;
+      }
+      .log .item .name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: #cfd6e2;
+      }
+      .log .item .rend {
+        color: #57d38c;
+      }
+      .muted {
+        color: #6b7484;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        color: #b9c2d0;
+      }
+      .hint {
+        font-size: 12px;
+        color: #7f8a9c;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>VideoStream — HLS playback telemetry</h1>
+    <div class="card">
+      <div class="row">
+        <input id="url" value="http://localhost:8081/videos/sample/master.m3u8" spellcheck="false" />
+        <button id="load">Load</button>
+      </div>
+      <video id="video" controls playsinline></video>
+      <div class="bar">
+        <span class="chip"><span class="dot"></span><span id="rendition">no stream</span></span>
+        <span id="reqcount">0 requests</span>
+        <span id="bytetotal">0 B</span>
+        <span class="spacer"></span>
+        <button id="clear" class="ghost">Clear log</button>
+      </div>
+      <div id="status" class="status"></div>
+      <div class="log" id="log">
+        <div class="head">
+          <span>type</span><span>file</span><span>rendition</span><span>size</span><span>time</span>
+        </div>
+      </div>
+      <div class="hint">
+        Play the HLS URL and watch the segment log fill up. Then load
+        <code>http://localhost:8081/source/sample.mp4</code> (the original file) to compare:
+        one request vs dozens. Throttle the network in DevTools to watch the rendition switch.
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+    <script>
+      const video = document.getElementById("video");
+      const input = document.getElementById("url");
+      const statusEl = document.getElementById("status");
+      const logEl = document.getElementById("log");
+      const renditionEl = document.getElementById("rendition");
+      const reqCountEl = document.getElementById("reqcount");
+      const byteTotalEl = document.getElementById("bytetotal");
+      let hls = null;
+      let reqCount = 0;
+      let byteTotal = 0;
+      const MAX_ROWS = 200;
+
+      function setStatus(text, kind) {
+        statusEl.textContent = text;
+        statusEl.className = "status" + (kind ? " " + kind : "");
+      }
+
+      function fmtBytes(n) {
+        if (!Number.isFinite(n)) return "—";
+        const units = ["B", "KB", "MB", "GB"];
+        let v = n;
+        let i = 0;
+        while (v >= 1024 && i < units.length - 1) {
+          v /= 1024;
+          i++;
+        }
+        return `${v < 10 && i > 0 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
+      }
+
+      function levelLabel(level) {
+        if (!level) return "—";
+        const parts = [];
+        if (level.height) parts.push(level.height + "p");
+        if (level.bitrate) parts.push(Math.round(level.bitrate / 1000) + " kbps");
+        return parts.join(" · ") || "—";
+      }
+
+      function shortName(url) {
+        try {
+          const path = new URL(url, location.href).pathname;
+          const parts = path.split("/");
+          if (parts.length >= 3 && parts[parts.length - 2].startsWith("stream_")) {
+            return parts[parts.length - 2] + "/" + parts[parts.length - 1];
+          }
+          return parts[parts.length - 1] || path;
+        } catch {
+          return url;
+        }
+      }
+
+      function logRow(kind, name, rendition, size, ms) {
+        reqCount++;
+        byteTotal += size || 0;
+        reqCountEl.textContent = reqCount + (reqCount === 1 ? " request" : " requests");
+        byteTotalEl.textContent = fmtBytes(byteTotal);
+
+        const item = document.createElement("div");
+        item.className = "item";
+        const kindClass = kind === "segment" ? "segment" : "playlist";
+        item.innerHTML =
+          `<span class="kind ${kindClass}">${kind}</span>` +
+          `<span class="name" title="${name}">${name}</span>` +
+          `<span class="rend">${rendition || "—"}</span>` +
+          `<span class="muted">${size != null ? fmtBytes(size) : "—"}</span>` +
+          `<span class="muted">${ms != null ? ms + " ms" : "—"}</span>`;
+        logEl.appendChild(item);
+
+        while (logEl.querySelectorAll(".item").length > MAX_ROWS) {
+          const first = logEl.querySelector(".item");
+          first.remove();
+        }
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      function resetStats() {
+        reqCount = 0;
+        byteTotal = 0;
+        reqCountEl.textContent = "0 requests";
+        byteTotalEl.textContent = "0 B";
+        logEl.querySelectorAll(".item").forEach((n) => n.remove());
+        renditionEl.textContent = "no stream";
+      }
+
+      function load(url) {
+        if (hls) {
+          hls.destroy();
+          hls = null;
+        }
+        resetStats();
+        video.removeAttribute("src");
+        video.load();
+
+        if (!url) {
+          setStatus("Enter a URL.", "error");
+          return;
+        }
+
+        const isHls = /\.m3u8(\?|$)/i.test(url);
+
+        if (!isHls) {
+          // Raw file (e.g. /source/sample.mp4) — native playback, no HLS events.
+          video.src = url;
+          setStatus("Raw file mode: the browser fetches this as a single object.", "ok");
+          return;
+        }
+
+        if (window.Hls && Hls.isSupported()) {
+          hls = new Hls();
+          hls.loadSource(url);
+          hls.attachMedia(video);
+
+          hls.on(Hls.Events.MANIFEST_PARSED, (_e, data) => {
+            setStatus(`Loaded ${data.levels.length} renditions. Press play.`, "ok");
+          });
+
+          hls.on(Hls.Events.LEVEL_SWITCHED, (_e, data) => {
+            renditionEl.textContent = levelLabel(hls.levels[data.level]);
+          });
+
+          hls.on(Hls.Events.LEVEL_LOADED, (_e, data) => {
+            const s = data.stats || {};
+            const ms = s.tload && s.trequest ? Math.round(s.tload - s.trequest) : null;
+            logRow(
+              "playlist",
+              shortName((s.url || "").toString() || `level ${data.level}`),
+              levelLabel(hls.levels[data.level]),
+              s.loaded,
+              ms
+            );
+          });
+
+          hls.on(Hls.Events.FRAG_LOADED, (_e, data) => {
+            const s = data.stats || {};
+            const ms = s.tload && s.trequest ? Math.round(s.tload - s.trequest) : null;
+            logRow(
+              "segment",
+              shortName(data.frag.url),
+              levelLabel(hls.levels[data.frag.level]),
+              s.loaded,
+              ms
+            );
+          });
+
+          hls.on(Hls.Events.ERROR, (_e, data) => {
+            if (data.fatal) setStatus(`HLS error: ${data.type} / ${data.details}`, "error");
+          });
+        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+          video.src = url;
+          setStatus("Using native HLS playback (Safari). Telemetry unavailable.", "ok");
+        } else {
+          setStatus("HLS is not supported in this browser. Use Safari or VLC.", "error");
+        }
+      }
+
+      document.getElementById("load").addEventListener("click", () => load(input.value.trim()));
+      document.getElementById("clear").addEventListener("click", resetStats);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") load(input.value.trim());
+      });
+
+      load(input.value.trim());
+    </script>
+  </body>
+</html>

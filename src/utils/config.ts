@@ -18,6 +18,9 @@ export const stuckJobTtlMs = (Number(process.env.STUCK_JOB_TTL_MIN) || 120) * 60
 
 export const thumbnailsEnabled = process.env.THUMBNAILS !== "false";
 
+export const ffmpegBin = process.env.FFMPEG_PATH ?? "ffmpeg";
+export const ffprobeBin = process.env.FFPROBE_PATH ?? "ffprobe";
+
 export const playbackToken = process.env.PLAYBACK_TOKEN ?? "";
 export const uptimePingUrl = process.env.UPTIME_PING_URL ?? "";
 export const uptimePingIntervalMs = Number(process.env.UPTIME_PING_INTERVAL_MS) || 300_000;
@@ -27,6 +30,7 @@ export const s3: S3ClientConfig = isLocal
       endpoint: process.env.LOCALSTACK_ENDPOINT,
       region: process.env.AWS_REGION ?? "us-east-1",
       forcePathStyle: true,
+      responseChecksumValidation: "WHEN_REQUIRED",
       credentials: {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? "",
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? "",
@@ -35,6 +39,7 @@ export const s3: S3ClientConfig = isLocal
   : {
       endpoint: process.env.R2_ENDPOINT,
       region: "auto",
+      responseChecksumValidation: "WHEN_REQUIRED",
       credentials: {
         accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
